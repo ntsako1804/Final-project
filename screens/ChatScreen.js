@@ -1,4 +1,4 @@
-import { doc, getDoc, onSnapshot, query } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import React, { useEffect, useState, Fragment } from 'react';
 import { SafeAreaView, StyleSheet, TouchableOpacity, Text, Image, FlatList, View, Dimensions, ActivityIndicator } from 'react-native';
 import { FIREBASE_DB } from '../firebaseConfig';
@@ -14,7 +14,7 @@ const MessageScreen = ({ navigation, route }) => {
 
   useEffect(() => {
     const getUserContacts = () => {
-      const userDocRef = doc(FIREBASE_DB, "users", route.params.user_id);
+      const userDocRef = doc(FIREBASE_DB, "users", currentUserId);
       
       const unsubscribe = onSnapshot(userDocRef, async (snapshot) => {
         const userData = snapshot.data();
@@ -26,7 +26,7 @@ const MessageScreen = ({ navigation, route }) => {
           return;
         }
   
-        const contactsObject = userData.realFriend;
+        const contactsObject = Array.isArray(userData.realFriend) ? userData.realFriend : [];
         
         // If no friends, stop loading and return
         if (contactsObject.length === 0) {
@@ -40,14 +40,17 @@ const MessageScreen = ({ navigation, route }) => {
             contactsObject.map((c) => getDoc(doc(FIREBASE_DB, "users", c)))
           );
           
-          const contactDetails = contactsSnap.map((d) => ({
-            uid: d.id,
-            ...d.data(),
-          }));
+          const contactDetails = contactsSnap
+            .filter((d) => d.exists()) // Filter out any undefined or non-existing documents
+            .map((d) => ({
+              uid: d.id,
+              ...d.data(),
+            }));
           
           setNotiUsers(contactDetails);
         } catch (error) {
           console.error("Error fetching contacts:", error);
+          setNotiUsers([]); // Ensure notiUsers is defined in case of an error
         } finally {
           setLoading(false);
         }
@@ -57,9 +60,7 @@ const MessageScreen = ({ navigation, route }) => {
     };
   
     getUserContacts();
-  }, [navigation, route.params.user_id]);
-  
-  
+  }, [navigation, currentUserId]);
 
   return (
     <Fragment>
@@ -85,9 +86,13 @@ const MessageScreen = ({ navigation, route }) => {
               renderItem={({ item }) => (
                 <TouchableOpacity onPress={() => navigation.navigate('Inbox', { name: item.name, uid: item.uid, avatar: item.avatar })}>
                   <View style={styles.card}>
-                    <Image style={styles.userImageST} source={{ uri: item.profileImage }} />
+                    {item.profileImage ? (
+                      <Image style={styles.userImageST} source={{ uri: item.profileImage }} />
+                    ) : (
+                      <View style={styles.placeholderImage} /> // Placeholder style for missing images
+                    )}
                     <View style={styles.textArea}>
-                      <Text style={styles.nameText}>{item.name}</Text>
+                      <Text style={styles.nameText}>{item.name || "Unknown User"}</Text>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -155,6 +160,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
+  },
+  placeholderImage: {
+    width: 55,
+    height: 55,
+    borderRadius: 27.5,
+    backgroundColor: '#CCC', // Light gray for placeholder
+    marginRight: 15,
   },
   textArea: {
     flex: 1,
